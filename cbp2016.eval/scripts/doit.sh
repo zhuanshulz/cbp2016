@@ -15,14 +15,14 @@ num_parallel_jobs=8
 
 # ./runall.pl -s ../sim/predictor -w all -f  $num_parallel_jobs -d ../results/SEZNEC2014.08KB
 
-./runall.pl -s ../sim/predictor -w random -f  $num_parallel_jobs -d ../results/new_traces
+./runall.pl -s ../sim/predictor -w temp -f  $num_parallel_jobs -d ../results/new_traces
 
 
 ###########  HOW TO GET STATS?  ################
 
 # This scripts creates stats, after all the earlier jobs finish
 
-./getdata.pl -w random -d ../results/new_traces
+./getdata.pl -w temp -d ../results/new_traces
 #./getdata.pl -w all -d ../results/SEZNEC2014.08KB
 
 # To compare MPKI numbers against GSHARE for the provided benchmarks , uncomment this line 
