@@ -18,11 +18,17 @@ using namespace std;
 
 
 #define COUNTER     unsigned long long
-
-
+#define parallel_num USE_PARALLEL
+// trace 都是32位的。
+// 此版本的思路在于对每一条单独的指令进行预测。
+// 根据trace的PC值找对应的预测器，然后看其预测是否准确，同周期的其他指令都当作是不跳转的指令。
+// 更新的时候的话，首先先更新当前trace对应的分支结果，当前周期其他的指令的更新就当作是没有跳转时的情况进行更新。
+// 这个版本的思路应该是第一个版本的，version1的仿真更接近与实际情况，因为其考虑到了多条分支指令存在于同一个周期中的情况。
+// 而这个版本的话思路简单了许多，就只考虑一条指令的情况。
 
 void CheckHeartBeat(UINT64 numIter, UINT64 numMispred)
 {
+   // 这个函数是输出每经过1k 10k ... 条branch时的分支预测的 MPKI
   UINT64 dotInterval=1000000;
   UINT64 lineInterval=30*dotInterval;
 
@@ -45,7 +51,7 @@ void CheckHeartBeat(UINT64 numIter, UINT64 numMispred)
 //    fflush(stdout);
 //  }
   if(numIter == d1K){ //prints MPKI after 100K branches
-    printf("  MPKBr_1K         \t : %10.4f",   1000.0*(double)(numMispred)/(double)(numIter));   
+    printf("  MPKBr_1K         \t : %10.4f \n",   1000.0*(double)(numMispred)/(double)(numIter));   
     fflush(stdout);
   }
 
@@ -142,11 +148,30 @@ int main(int argc, char* argv[]){
 //ver2    UINT64     numMispred_btbDYN =0;  
 
     UINT64 cond_branch_instruction_counter=0;
+    UINT64 uncond_branch_instruction_counter=0;
+    
+    UINT64 cond_return_instruction_counter=0;
+    UINT64 uncond_return_instruction_counter=0;
+
+    UINT64 cond_directJump_instruction_counter=0;
+    UINT64 uncond_directJump_instruction_counter=0;
+    
+    UINT64 cond_indirectJump_instruction_counter=0;
+    UINT64 uncond_indirectJump_instruction_counter=0;
+    
+    UINT64 cond_directCall_instruction_counter=0;
+    UINT64 uncond_directCall_instruction_counter=0;
+    
+    UINT64 cond_indirectCall_instruction_counter=0;
+    UINT64 uncond_indirectCall_instruction_counter=0;
+
+    UINT64 error_instruction_conter=0;
+
+
 //ver2     UINT64 btb_ansf_cond_branch_instruction_counter=0;
 //ver2     UINT64 btb_atsf_cond_branch_instruction_counter=0;
 //ver2     UINT64 btb_dyn_cond_branch_instruction_counter=0;
 //ver2     UINT64 btb_miss_cond_branch_instruction_counter=0;
-           UINT64 uncond_branch_instruction_counter=0;
 
 //ver2    ///////////////////////////////////////////////
 //ver2    // model simple branch marking structure
@@ -162,6 +187,8 @@ int main(int argc, char* argv[]){
 
       OpType opType;
       UINT64 PC;
+      UINT64 PC_aligned;
+      uint index;
       bool branchTaken;
       UINT64 branchTarget;
       UINT64 numIter = 0;
@@ -180,6 +207,7 @@ int main(int argc, char* argv[]){
 
           if ((br_class.type == bt9::BrClass::Type::UNKNOWN) && (it->getSrcNode()->brNodeIndex())) { //only fault if it isn't the first node in the graph (fake branch)
             opType = OPTYPE_ERROR; //sanity check
+            error_instruction_conter++;
           }
 //NOTE unconditional could be part of an IT block that is resolved not-taken
 //          else if (dirNeverTkn && (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL)) {
@@ -191,75 +219,111 @@ int main(int argc, char* argv[]){
 //          }
           else if (br_class.type == bt9::BrClass::Type::RET) {
             if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL)
-              opType = OPTYPE_RET_COND;
+              {
+                cond_return_instruction_counter++;
+                opType = OPTYPE_RET_COND;
+              }
             else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL)
-              opType = OPTYPE_RET_UNCOND;
+              {
+                uncond_return_instruction_counter++;
+                opType = OPTYPE_RET_UNCOND;
+              }
             else {
               opType = OPTYPE_ERROR;
+              error_instruction_conter++;
             }
           }
           else if (br_class.directness == bt9::BrClass::Directness::INDIRECT) {
             if (br_class.type == bt9::BrClass::Type::CALL) {
               if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL)
-                opType = OPTYPE_CALL_INDIRECT_COND;
+                {
+                  cond_indirectCall_instruction_counter++;
+                  opType = OPTYPE_CALL_INDIRECT_COND;
+                }
               else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL)
-                opType = OPTYPE_CALL_INDIRECT_UNCOND;
+                {
+                  uncond_indirectCall_instruction_counter++;
+                  opType = OPTYPE_CALL_INDIRECT_UNCOND;
+                }
               else {
                 opType = OPTYPE_ERROR;
+                error_instruction_conter++;
               }
             }
             else if (br_class.type == bt9::BrClass::Type::JMP) {
               if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL)
-                opType = OPTYPE_JMP_INDIRECT_COND;
+                {
+                  cond_indirectJump_instruction_counter++;
+                  opType = OPTYPE_JMP_INDIRECT_COND;
+                }
               else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL)
-                opType = OPTYPE_JMP_INDIRECT_UNCOND;
+                {
+                  uncond_indirectJump_instruction_counter++;
+                  opType = OPTYPE_JMP_INDIRECT_UNCOND;
+                }
               else {
                 opType = OPTYPE_ERROR;
+                error_instruction_conter++;
               }
             }
             else {
               opType = OPTYPE_ERROR;
+              error_instruction_conter++;
             }
           }
           else if (br_class.directness == bt9::BrClass::Directness::DIRECT) {
             if (br_class.type == bt9::BrClass::Type::CALL) {
               if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL) {
+                cond_directCall_instruction_counter++;
                 opType = OPTYPE_CALL_DIRECT_COND;
               }
               else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL) {
+                uncond_directCall_instruction_counter++;
                 opType = OPTYPE_CALL_DIRECT_UNCOND;
               }
               else {
                 opType = OPTYPE_ERROR;
+                error_instruction_conter++;
               }
             }
             else if (br_class.type == bt9::BrClass::Type::JMP) {
               if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL) {
-                opType = OPTYPE_JMP_DIRECT_COND;
+                {
+                  cond_directJump_instruction_counter++;
+                  opType = OPTYPE_JMP_DIRECT_COND;
+                }
               }
               else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL) {
-                opType = OPTYPE_JMP_DIRECT_UNCOND;
+                {
+                  uncond_directJump_instruction_counter++;
+                  opType = OPTYPE_JMP_DIRECT_UNCOND;
+                }
               }
               else {
                 opType = OPTYPE_ERROR;
+                error_instruction_conter++;
               }
             }
             else {
               opType = OPTYPE_ERROR;
+              error_instruction_conter++;
             }
           }
           else {
             opType = OPTYPE_ERROR;
+            error_instruction_conter++;
           }
 
-  
           PC = it->getSrcNode()->brVirtualAddr();
-
+          PC_aligned = PC - (PC % ((UINT64)(parallel_num * 4)));
+          // index = 1 2 3 4 5 6 7 8... 说明是第几个
+          index = ((PC % ((UINT64)(parallel_num * 4)))/4) + 1;
           branchTaken = it->getEdge()->isTakenPath();
           branchTarget = it->getEdge()->brVirtualTarget();
 
-          //printf("PC: %llx type: %x T %d N %d outcome: %d", PC, (UINT32)opType, it->getSrcNode()->brObservedTakenCnt(), it->getSrcNode()->brObservedNotTakenCnt(), branchTaken);
-
+          // printf("PC: %llx type: %x T %d N %d outcome: %d \n", PC, (UINT32)opType, it->getSrcNode()->brObservedTakenCnt(), it->getSrcNode()->brObservedNotTakenCnt(), branchTaken);
+          // printf("PC_aligned: %llx type: %x T %d N %d outcome: %d \n", PC_aligned, (UINT32)opType, it->getSrcNode()->brObservedTakenCnt(), it->getSrcNode()->brObservedNotTakenCnt(), branchTaken);
+          // printf("index = %d \n", index);
 /************************************************************************************************************/
 
           if (opType == OPTYPE_ERROR) { 
@@ -270,63 +334,16 @@ int main(int argc, char* argv[]){
             }
           }
           else if (br_class.conditionality == bt9::BrClass::Conditionality::CONDITIONAL) { //JD2_17_2016 call UpdatePredictor() for all branches that decode as conditional
-            //printf("COND ");
 
-//NOTE: contestants are NOT allowed to use the btb* information from ver2 of the infrastructure below:
-//ver2             myBtbIterator = myBtb.find(PC); //check BTB for a hit
-//ver2            bool btbATSF = false;
-//ver2            bool btbANSF = false;
-//ver2            bool btbDYN = false;
-//ver2
-//ver2            if (myBtbIterator == myBtb.end()) { //miss -> we have no history for the branch in the marking structure
-//ver2              //printf("BTB miss ");
-//ver2              myBtb.insert(pair<UINT64, UINT32>(PC, (UINT32)branchTaken)); //on a miss insert with outcome (N->btbANSF, T->btbATSF)
-//ver2              predDir = brpred->GetPrediction(PC, btbANSF, btbATSF, btbDYN);
-//ver2              brpred->UpdatePredictor(PC, opType, branchTaken, predDir, branchTarget, btbANSF, btbATSF, btbDYN); 
-//ver2            }
-//ver2            else {
-//ver2              btbANSF = (myBtbIterator->second == 0);
-//ver2              btbATSF = (myBtbIterator->second == 1);
-//ver2              btbDYN = (myBtbIterator->second == 2);
-//ver2              //printf("BTB hit ANSF: %d ATSF: %d DYN: %d ", btbANSF, btbATSF, btbDYN);
-//ver2
-//ver2              predDir = brpred->GetPrediction(PC, btbANSF, btbATSF, btbDYN);
-//ver2              brpred->UpdatePredictor(PC, opType, branchTaken, predDir, branchTarget, btbANSF, btbATSF, btbDYN); 
-//ver2
-//ver2              if (  (btbANSF && branchTaken)   // only exhibited N until now and we just got a T -> upgrade to dynamic conditional
-//ver2                 || (btbATSF && !branchTaken)  // only exhibited T until now and we just got a N -> upgrade to dynamic conditional
-//ver2                 ) {
-//ver2                myBtbIterator->second = 2; //2-> dynamic conditional (has exhibited both taken and not-taken in the past)
-//ver2              }
-//ver2            }
-//ver2            //puts("");
+            bool* predDir ;
+            predDir = brpred->GetPrediction(PC_aligned);
+            brpred->UpdatePredictor(PC_aligned, opType, branchTaken, predDir, branchTarget, index); 
 
-            bool predDir = false;
-
-            predDir = brpred->GetPrediction(PC);
-            brpred->UpdatePredictor(PC, opType, branchTaken, predDir, branchTarget); 
-
-            if(predDir != branchTaken){
+            if(*(predDir + index -1) != branchTaken){
               numMispred++; // update mispred stats
-//ver2              if(btbATSF)
-//ver2                numMispred_btbATSF++; // update mispred stats
-//ver2              else if(btbANSF)
-//ver2                numMispred_btbANSF++; // update mispred stats
-//ver2              else if(btbDYN)
-//ver2                numMispred_btbDYN++; // update mispred stats
-//ver2              else
-//ver2                numMispred_btbMISS++; // update mispred stats
             }
             cond_branch_instruction_counter++;
 
-//ver2            if (btbDYN)
-//ver2              btb_dyn_cond_branch_instruction_counter++; //number of branches that have been N at least once after being T at least once
-//ver2            else if (btbATSF)
-//ver2              btb_atsf_cond_branch_instruction_counter++; //number of branches that have been T at least once, but have not yet seen a N after the first T
-//ver2            else if (btbANSF)
-//ver2              btb_ansf_cond_branch_instruction_counter++; //number of cond branches that have not yet been observed T
-//ver2            else
-//ver2              btb_miss_cond_branch_instruction_counter++; //number of cond branches that have not yet been observed T
           }
           else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL) { // for predictors that want to track unconditional branches
             uncond_branch_instruction_counter++;
@@ -354,21 +371,21 @@ int main(int argc, char* argv[]){
 
     //NOTE: competitors are judged solely on MISPRED_PER_1K_INST. The additional stats are just for tuning your predictors.
 
-      printf("  TRACE \t : %s" , trace_path.c_str()); 
-      printf("  NUM_INSTRUCTIONS            \t : %10llu",   total_instruction_counter);
-      printf("  NUM_BR                      \t : %10llu",   branch_instruction_counter-1); //JD2_2_2016 NOTE there is a dummy branch at the beginning of the trace...
-      printf("  NUM_UNCOND_BR               \t : %10llu",   uncond_branch_instruction_counter);
-      printf("  NUM_CONDITIONAL_BR          \t : %10llu",   cond_branch_instruction_counter);
+      printf("  TRACE \t : %s \n" , trace_path.c_str()); 
+      printf("  NUM_INSTRUCTIONS            \t : %10llu \n",   total_instruction_counter);
+      printf("  NUM_BR                      \t : %10llu \n",   branch_instruction_counter-1); //JD2_2_2016 NOTE there is a dummy branch at the beginning of the trace...
+      printf("  NUM_UNCOND_BR               \t : %10llu \n",   uncond_branch_instruction_counter);
+      printf("  NUM_CONDITIONAL_BR          \t : %10llu \n",   cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_MISS \t : %10llu",   btb_miss_cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_ANSF \t : %10llu",   btb_ansf_cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_ATSF \t : %10llu",   btb_atsf_cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_DYN  \t : %10llu",   btb_dyn_cond_branch_instruction_counter);
-      printf("  NUM_MISPREDICTIONS          \t : %10llu",   numMispred);
+      printf("  NUM_MISPREDICTIONS          \t : %10llu \n",   numMispred);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_MISS \t : %10llu",   numMispred_btbMISS);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_ANSF \t : %10llu",   numMispred_btbANSF);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_ATSF \t : %10llu",   numMispred_btbATSF);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_DYN  \t : %10llu",   numMispred_btbDYN);
-      printf("  MISPRED_PER_1K_INST         \t : %10.4f",   1000.0*(double)(numMispred)/(double)(total_instruction_counter));
+      printf("  MISPRED_PER_1K_INST         \t : %10.4f \n",   1000.0*(double)(numMispred)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_MISS\t : %10.4f",   1000.0*(double)(numMispred_btbMISS)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_ANSF\t : %10.4f",   1000.0*(double)(numMispred_btbANSF)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_ATSF\t : %10.4f",   1000.0*(double)(numMispred_btbATSF)/(double)(total_instruction_counter));
