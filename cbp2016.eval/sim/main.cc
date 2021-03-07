@@ -151,18 +151,23 @@ int main(int argc, char* argv[]){
     UINT64 uncond_branch_instruction_counter=0;
     
     UINT64 cond_return_instruction_counter=0;
+    UINT64 numMispred_cond_return = 0;
     UINT64 uncond_return_instruction_counter=0;
 
     UINT64 cond_directJump_instruction_counter=0;
+    UINT64 numMispred_cond_direct_jump = 0;
     UINT64 uncond_directJump_instruction_counter=0;
     
     UINT64 cond_indirectJump_instruction_counter=0;
+    UINT64 numMispred_cond_indirect_jump = 0;
     UINT64 uncond_indirectJump_instruction_counter=0;
     
     UINT64 cond_directCall_instruction_counter=0;
+    UINT64 numMispred_cond_direct_call = 0;
     UINT64 uncond_directCall_instruction_counter=0;
     
     UINT64 cond_indirectCall_instruction_counter=0;
+    UINT64 numMispred_cond_indirect_call = 0;
     UINT64 uncond_indirectCall_instruction_counter=0;
 
     UINT64 error_instruction_conter=0;
@@ -338,11 +343,42 @@ int main(int argc, char* argv[]){
             bool* predDir ;
             predDir = brpred->GetPrediction(PC_aligned);
             brpred->UpdatePredictor(PC_aligned, opType, branchTaken, predDir, branchTarget, index); 
-
-            if(*(predDir + index -1) != branchTaken){
+            bool temp_pred_direction = *(predDir + index -1);
+            if(temp_pred_direction != branchTaken){
               numMispred++; // update mispred stats
             }
             cond_branch_instruction_counter++;
+
+            if (opType==OPTYPE_RET_COND)
+            {
+                if(temp_pred_direction != branchTaken){
+                  numMispred_cond_return++; // update mispred stats
+                }
+            }
+            else if (opType==OPTYPE_CALL_INDIRECT_COND)
+            {
+                if(temp_pred_direction != branchTaken){
+                  numMispred_cond_indirect_call++; // update mispred stats
+                }
+            }
+            else if (opType==OPTYPE_JMP_INDIRECT_COND)
+            {
+                if(temp_pred_direction != branchTaken){
+                  numMispred_cond_indirect_jump++; // update mispred stats
+                }
+            }
+            else if (opType==OPTYPE_CALL_DIRECT_COND)
+            {
+                if(temp_pred_direction != branchTaken){
+                  numMispred_cond_direct_call++; // update mispred stats
+                }
+            }
+            else if (opType==OPTYPE_JMP_DIRECT_COND)
+            {
+                if(temp_pred_direction != branchTaken){
+                  numMispred_cond_direct_jump++; // update mispred stats
+                }
+            }
 
           }
           else if (br_class.conditionality == bt9::BrClass::Conditionality::UNCONDITIONAL) { // for predictors that want to track unconditional branches
@@ -380,17 +416,33 @@ int main(int argc, char* argv[]){
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_ANSF \t : %10llu",   btb_ansf_cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_ATSF \t : %10llu",   btb_atsf_cond_branch_instruction_counter);
 //ver2      printf("  NUM_CONDITIONAL_BR_BTB_DYN  \t : %10llu",   btb_dyn_cond_branch_instruction_counter);
-      printf("  NUM_MISPREDICTIONS          \t : %10llu \n",   numMispred);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_MISS \t : %10llu",   numMispred_btbMISS);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_ANSF \t : %10llu",   numMispred_btbANSF);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_ATSF \t : %10llu",   numMispred_btbATSF);
 //ver2      printf("  NUM_MISPREDICTIONS_BTB_DYN  \t : %10llu",   numMispred_btbDYN);
-      printf("  MISPRED_PER_1K_INST         \t : %10.4f \n",   1000.0*(double)(numMispred)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_MISS\t : %10.4f",   1000.0*(double)(numMispred_btbMISS)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_ANSF\t : %10.4f",   1000.0*(double)(numMispred_btbANSF)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_ATSF\t : %10.4f",   1000.0*(double)(numMispred_btbATSF)/(double)(total_instruction_counter));
 //ver2      printf("  MISPRED_PER_1K_INST_BTB_DYN \t : %10.4f",   1000.0*(double)(numMispred_btbDYN)/(double)(total_instruction_counter));
+      printf("  NUM_COND_RETURN               \t : %10llu \n",   cond_return_instruction_counter);
+      printf("  NUM_MISPREDICTIONS_COND_RETURN\t : %10llu \n",   numMispred_cond_return);
+      printf("  NUM_UNCOND_RETURN             \t : %10llu \n",   uncond_return_instruction_counter);
+      printf("  NUM_COND_DIRECT_JUMP          \t : %10llu \n",   cond_directJump_instruction_counter);
+      printf("  NUM_MISPREDICTIONS_COND_D_JUMP\t : %10llu \n",   numMispred_cond_direct_jump);
+      printf("  NUM_UNCOND_DIRECT_JUMP        \t : %10llu \n",   uncond_directJump_instruction_counter);
+      printf("  NUM_COND_INDIRECT_JUMP        \t : %10llu \n",   cond_indirectJump_instruction_counter);
+      printf("  NUM_MISPREDICTIONS_COND_I_JUMP\t : %10llu \n",   numMispred_cond_indirect_jump);
+      printf("  NUM_UNCOND_INDIRECT_JUMP      \t : %10llu \n",   uncond_indirectJump_instruction_counter);
+      printf("  NUM_COND_DIRECT_CALL          \t : %10llu \n",   cond_directCall_instruction_counter);
+      printf("  NUM_MISPREDICTIONS_COND_D_CALL\t : %10llu \n",   numMispred_cond_direct_call);
+      printf("  NUM_UNCOND_DIRECT_CALL        \t : %10llu \n",   uncond_directCall_instruction_counter);
+      printf("  NUM_COND_INDIRECT_CALL        \t : %10llu \n",   cond_indirectCall_instruction_counter);
+      printf("  NUM_MISPREDICTIONS_COND_I_CALL\t : %10llu \n",   numMispred_cond_indirect_call);
+      printf("  NUM_UNCOND_INDIRECT_CALL      \t : %10llu \n",   uncond_indirectCall_instruction_counter);
+      printf("  NUM_ERROR                     \t : %10llu \n",   error_instruction_conter);
       printf("\n");
+      printf("  NUM_MISPREDICTIONS          \t : %10llu \n",   numMispred);
+      printf("  MISPRED_PER_1K_INST         \t : %10.4f \n",   1000.0*(double)(numMispred)/(double)(total_instruction_counter));
 }
 
 
